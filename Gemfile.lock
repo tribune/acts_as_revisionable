@@ -22,8 +22,8 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
-  activerecord (~> 2.3.9)
-  activesupport (~> 2.3.9)
+  activerecord (>= 2.3.9)
+  activesupport (>= 2.3.9)
   composite_primary_keys
   rake
   rspec (>= 2.6.0)
