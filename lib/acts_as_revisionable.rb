@@ -83,7 +83,7 @@ module ActsAsRevisionable
     # If you want to save a revision with associations properly, use restore_revision!
     def restore_revision(id, revision_number)
       revision_record = revision(id, revision_number)
-      return revision_record.restore if revision_record
+      return revision_record.restore(self) if revision_record
     end
 
     # Load a revision for a record with a particular id and save it to the database. You should
@@ -103,7 +103,7 @@ module ActsAsRevisionable
     # If you want to save a revision with associations properly, use restore_last_revision!
     def restore_last_revision(id)
       revision_record = last_revision(id)
-      return revision_record.restore if revision_record
+      return revision_record.restore(self) if revision_record
     end
 
     # Load the last revision for a record with the specified id and save it to the database. You should

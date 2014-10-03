@@ -92,7 +92,7 @@ module ActsAsRevisionable
 
     # Restore the revision to the original record. If any errors are encountered restoring attributes, they
     # will be added to the errors object of the restored record.
-    def restore
+    def restore klass=nil
       restore_class = self.revisionable_type.constantize
 
       # Check if we have a type field, if yes, assume single table inheritance and restore the actual class instead of the stored base class
@@ -107,6 +107,8 @@ module ActsAsRevisionable
           raise e
           # Seems our assumption was wrong and we have no STI
         end
+      elsif klass
+        restore_class = klass
       end
 
       record = restore_class.new
