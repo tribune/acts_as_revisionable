@@ -21,7 +21,7 @@ if ActiveRecord::VERSION::MAJOR >= 3
   elsif ActiveRecord::VERSION::MINOR == 1
     composite_primary_key_version = "~>4"
   else
-    composite_primary_key_version = ">4"
+    composite_primary_key_version = "~>5"
   end
 else
   composite_primary_key_version = "~>2.3.5"
