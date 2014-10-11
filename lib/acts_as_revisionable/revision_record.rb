@@ -7,7 +7,7 @@ module ActsAsRevisionable
     before_create :set_revision_number
     attr_reader :data_encoding
 
-    set_table_name :revision_records
+    self.table_name = :revision_records
 
     class << self
       # Find a specific revision record.
@@ -92,7 +92,7 @@ module ActsAsRevisionable
 
     # Restore the revision to the original record. If any errors are encountered restoring attributes, they
     # will be added to the errors object of the restored record.
-    def restore
+    def restore klass=nil
       restore_class = self.revisionable_type.constantize
 
       # Check if we have a type field, if yes, assume single table inheritance and restore the actual class instead of the stored base class
@@ -107,6 +107,8 @@ module ActsAsRevisionable
           raise e
           # Seems our assumption was wrong and we have no STI
         end
+      elsif klass
+        restore_class = klass
       end
 
       record = restore_class.new
@@ -204,7 +206,12 @@ module ActsAsRevisionable
       begin
         if reflection.macro == :has_many
           if association_attributes.kind_of?(Array)
-            record.send("#{association}=", [])
+            # Pop all the associated records to remove all records. In Rails 3.2 setting the value of the list
+            # will immediately affect the database
+            records = record.send(association)
+            while records.pop do
+              # no-op
+            end
             association_attributes.each do |attrs|
               restore_association(record, association, attrs)
             end

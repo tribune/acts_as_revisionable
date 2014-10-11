@@ -89,7 +89,7 @@ describe ActsAsRevisionable do
     end
 
     class RevisionRecord2 < ActsAsRevisionable::RevisionRecord
-      set_table_name "revision_records_2"
+      self.table_name = "revision_records_2"
       create_table
       connection.add_column(table_name, :label, :string)
       connection.add_column(table_name, :updated_by, :string)
@@ -113,7 +113,7 @@ describe ActsAsRevisionable do
           t.column :type_name, :string
         end unless table_exists?
 
-        set_inheritance_column :type_name
+        self.inheritance_column = :type_name
         acts_as_revisionable :dependent => :keep, :on_destroy => true, :encoding => :xml
         self.store_full_sti_class = false
       end
@@ -143,7 +143,7 @@ describe ActsAsRevisionable do
 
   context "injected methods" do
     it "should be able to inject revisionable behavior onto ActiveRecord::Base" do
-      ActiveRecord::Base.included_modules.should include(ActsAsRevisionable)
+      ActiveRecord::Base.should respond_to(:acts_as_revisionable)
     end
 
     it "should add as has_many :record_revisions association" do
@@ -276,7 +276,7 @@ describe ActsAsRevisionable do
       ActsAsRevisionable::RevisionRecord.count.should == 1
     end
 
-    it "should set metadata on the revison when creating a revision record" do
+    it "should set metadata on the revison when creating a revision record using a complex attribute to value mapping" do
       record_1 = OtherRevisionableTestModel.create!(:name => "test", :updated_by => "dude")
       RevisionRecord2.count.should == 0
       record_1.create_revision!
@@ -287,6 +287,38 @@ describe ActsAsRevisionable do
       revision.version.should == 1
     end
 
+    it "should set metadata on the revison when creating a revision record using a simply string to define a method to copy" do
+      meta_value = OtherRevisionableTestModel.acts_as_revisionable_options[:meta]
+      begin
+        OtherRevisionableTestModel.acts_as_revisionable_options[:meta] = "label"
+        record_1 = OtherRevisionableTestModel.create!(:name => "test", :updated_by => "dude")
+        record_1.stub!(:label => "this is a label")
+        record_1.create_revision!
+        revision = record_1.last_revision
+        revision.label.should == "this is a label"
+        revision.updated_by.should == nil
+        revision.version.should == nil
+      ensure
+        OtherRevisionableTestModel.acts_as_revisionable_options[:meta] = meta_value
+      end
+    end
+
+    it "should set metadata on the revison when creating a revision record using an array of attribute names to copy" do
+      meta_value = OtherRevisionableTestModel.acts_as_revisionable_options[:meta]
+      begin
+        OtherRevisionableTestModel.acts_as_revisionable_options[:meta] = [:label, "version"]
+        record_1 = OtherRevisionableTestModel.create!(:name => "test", :updated_by => "dude")
+        record_1.stub!(:label => "this is a label", :version => 100)
+        record_1.create_revision!
+        revision = record_1.last_revision
+        revision.label.should == "this is a label"
+        revision.updated_by.should == nil
+        revision.version.should == 100
+      ensure
+        OtherRevisionableTestModel.acts_as_revisionable_options[:meta] = meta_value
+      end
+    end
+  
     it "should not create a revision entry if revisioning is disabled" do
       record = RevisionableTestModel.create!(:name => "test")
       ActsAsRevisionable::RevisionRecord.count.should == 0
@@ -322,7 +354,7 @@ describe ActsAsRevisionable do
       end
       model.reload
       ActsAsRevisionable::RevisionRecord.count.should == 0
-
+  
       model.should_receive(:update).and_raise("update failed")
       model.name = 'new_name'
       begin
@@ -334,7 +366,7 @@ describe ActsAsRevisionable do
       end
       ActsAsRevisionable::RevisionRecord.count.should == 0
     end
-
+  
     it "should not save a revision if an update fails with errors" do
       model = RevisionableTestModel.new(:name => 'test')
       model.store_revision do
@@ -342,7 +374,7 @@ describe ActsAsRevisionable do
       end
       model.reload
       ActsAsRevisionable::RevisionRecord.count.should == 0
-
+  
       model.name = 'new_name'
       model.store_revision do
         ActsAsRevisionable::RevisionRecord.count.should == 1
@@ -351,7 +383,7 @@ describe ActsAsRevisionable do
       end
       ActsAsRevisionable::RevisionRecord.count.should == 0
     end
-
+  
     it "should mark the last revision for a deleted record as being trash" do
       model = ActsAsRevisionable::RevisionableNamespaceModel.new(:name => 'test')
       model.save!
@@ -364,7 +396,7 @@ describe ActsAsRevisionable do
       ActsAsRevisionable::RevisionRecord.last_revision(ActsAsRevisionable::RevisionableNamespaceModel, model.id).should be_trash
     end
   end
-
+  
   context "restoring revisions" do
     it "should restore a record without associations" do
       model = RevisionableTestModel.new(:name => 'test')
@@ -374,7 +406,7 @@ describe ActsAsRevisionable do
       end
       model.reload
       ActsAsRevisionable::RevisionRecord.count.should == 0
-
+  
       model.name = 'new_name'
       model.set_secret(5678)
       model.store_revision do
@@ -384,12 +416,12 @@ describe ActsAsRevisionable do
       ActsAsRevisionable::RevisionRecord.count.should == 1
       model.name.should == 'new_name'
       model.secret.should == 5678
-
+  
       restored = model.restore_revision(1)
       restored.name.should == 'test'
       restored.secret.should == 1234
       restored.id.should == model.id
-
+  
       restored.store_revision do
         restored.save!
       end
@@ -399,12 +431,12 @@ describe ActsAsRevisionable do
       restored_model.name.should == restored.name
       restored_model.secret.should == restored.secret
     end
-
+  
     it "should restore a record with has_many associations" do
       many_thing_1 = RevisionableTestManyThing.new(:name => 'many_thing_1')
       many_thing_1.sub_things.build(:name => 'sub_thing_1')
       many_thing_1.sub_things.build(:name => 'sub_thing_2')
-
+  
       model = RevisionableTestModel.new(:name => 'test')
       model.many_things << many_thing_1
       model.many_things.build(:name => 'many_thing_2')
@@ -416,7 +448,7 @@ describe ActsAsRevisionable do
       RevisionableTestSubThing.count.should == 2
       RevisionableTestManyOtherThing.count.should == 2
       ActsAsRevisionable::RevisionRecord.count.should == 0
-
+  
       model.store_revision do
         model.name = 'new_name'
         many_thing_1 = model.many_things.detect{|t| t.name == 'many_thing_1'}
@@ -439,7 +471,7 @@ describe ActsAsRevisionable do
         sub_thing_1.save!
         many_other_thing_1.save!
       end
-
+  
       model.reload
       ActsAsRevisionable::RevisionRecord.count.should == 1
       RevisionableTestManyThing.count.should == 2
@@ -449,7 +481,7 @@ describe ActsAsRevisionable do
       model.many_things.collect{|t| t.name}.sort.should == ['many_thing_3', 'new_many_thing_1']
       model.many_things.detect{|t| t.name == 'new_many_thing_1'}.sub_things.collect{|t| t.name}.sort.should == ['new_sub_thing_1', 'sub_thing_3']
       model.many_other_things.collect{|t| t.name}.sort.should == ['many_other_thing_3', 'new_many_other_thing_1']
-
+  
       # restore to memory
       restored = model.restore_revision(1)
       restored.name.should == 'test'
@@ -458,14 +490,14 @@ describe ActsAsRevisionable do
       restored.many_things.detect{|t| t.name == 'many_thing_1'}.sub_things.collect{|t| t.name}.sort.should == ['sub_thing_1', 'sub_thing_2']
       restored.many_other_things.collect{|t| t.name}.sort.should == ['many_other_thing_3', 'new_many_other_thing_1']
       restored.valid?.should == true
-
-      # make the restore to memory didn't affect the database
+  
+      # make sure the restore to memory didn't affect the database
       model.reload
       model.name.should == 'new_name'
       model.many_things(true).collect{|t| t.name}.sort.should == ['many_thing_3', 'new_many_thing_1']
       model.many_things.detect{|t| t.name == 'new_many_thing_1'}.sub_things.collect{|t| t.name}.sort.should == ['new_sub_thing_1', 'sub_thing_3']
       model.many_other_things.collect{|t| t.name}.sort.should == ['many_other_thing_3', 'new_many_other_thing_1']
-
+  
       model.restore_revision!(1)
       RevisionableTestModel.count.should == 1
       RevisionableTestManyThing.count.should == 2
@@ -479,7 +511,7 @@ describe ActsAsRevisionable do
       restored.many_things.detect{|t| t.name == 'many_thing_2'}.sub_things.collect{|t| t.name}.sort.should == []
       restored.many_other_things.collect{|t| t.name}.sort.should == ['many_other_thing_3', 'new_many_other_thing_1']
     end
-
+  
     it "should restore a record with has_one associations" do
       model = RevisionableTestModel.new(:name => 'test')
       model.build_one_thing(:name => 'other')

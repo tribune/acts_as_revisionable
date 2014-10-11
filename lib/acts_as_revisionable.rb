@@ -39,6 +39,11 @@ module ActsAsRevisionable
     #     :version => 1
     #   }
     #
+    # As a shortcut, you can can also just pass an attribute name or array of attribute names to copy to the revision
+    # record.
+    #
+    #   acts_as_revisionable :meta => :updated_by
+    #
     # The values to the <tt>:meta</tt> hash can be either symbols or Procs. If it is a symbol, the method
     # so named will be called on the record being revisioned. If it is a Proc, it will be called with the
     # record as the argument. Any other class will be sent directly to the revision record.
@@ -57,7 +62,6 @@ module ActsAsRevisionable
       acts_as_revisionable_options[:class_name] = acts_as_revisionable_options[:class_name].name if acts_as_revisionable_options[:class_name].is_a?(Class)
       extend ClassMethods
       include InstanceMethods
-      class_name =
       class_name = acts_as_revisionable_options[:class_name].to_s if acts_as_revisionable_options[:class_name]
       has_many_options = {:as => :revisionable, :order => 'revision DESC', :class_name => class_name}
       has_many_options[:dependent] = :destroy unless options[:dependent] == :keep
@@ -83,7 +87,7 @@ module ActsAsRevisionable
     # If you want to save a revision with associations properly, use restore_revision!
     def restore_revision(id, revision_number)
       revision_record = find_revision(id, revision_number)
-      return revision_record.restore if revision_record
+      return revision_record.restore(self) if revision_record
     end
 
     # Load a revision for a record with a particular id and save it to the database. You should
@@ -103,7 +107,7 @@ module ActsAsRevisionable
     # If you want to save a revision with associations properly, use restore_last_revision!
     def restore_last_revision(id)
       revision_record = last_revision(id)
-      return revision_record.restore if revision_record
+      return revision_record.restore(self) if revision_record
     end
 
     # Load the last revision for a record with the specified id and save it to the database. You should
@@ -245,17 +249,18 @@ module ActsAsRevisionable
 
     # Create a revision record based on this record and save it to the database.
     def create_revision!
-      revision = revision_record_class.new(self, acts_as_revisionable_options[:encoding])
-      if self.acts_as_revisionable_options[:meta].is_a?(Hash)
-        self.acts_as_revisionable_options[:meta].each do |attribute, value|
-          case value
-          when Symbol
-            value = self.send(value)
-          when Proc
-            value = value.call(self)
-          end
-          revision.send("#{attribute}=", value)
+      revision_options = self.class.acts_as_revisionable_options
+      revision = revision_record_class.new(self, revision_options[:encoding])
+      if revision_options[:meta].is_a?(Hash)
+        revision_options[:meta].each do |attribute, value|
+          set_revision_meta_attribute(revision, attribute, value)
         end
+      elsif revision_options[:meta].is_a?(Array)
+        revision_options[:meta].each do |attribute|
+          set_revision_meta_attribute(revision, attribute, attribute.to_sym)
+        end
+      elsif revision_options[:meta]
+        set_revision_meta_attribute(revision, revision_options[:meta], revision_options[:meta].to_sym)
       end
       revision.save!
       return revision
@@ -263,7 +268,7 @@ module ActsAsRevisionable
 
     # Truncate the number of revisions kept for this record. Available options are :limit and :minimum_age.
     def truncate_revisions!(options = nil)
-      options = {:limit => acts_as_revisionable_options[:limit], :minimum_age => acts_as_revisionable_options[:minimum_age]} unless options
+      options = {:limit => self.class.acts_as_revisionable_options[:limit], :minimum_age => self.class.acts_as_revisionable_options[:minimum_age]} unless options
       revision_record_class.truncate_revisions(self.class, self.id, options)
     end
 
@@ -299,7 +304,18 @@ module ActsAsRevisionable
         update_without_revision
       end
     end
+    
+    # Set an attribute based on a meta argument
+    def set_revision_meta_attribute(revision, attribute, value)
+      case value
+      when Symbol
+        value = self.send(value)
+      when Proc
+        value = value.call(self)
+      end
+      revision.send("#{attribute}=", value)
+    end
   end
 end
 
-ActiveRecord::Base.send(:include, ActsAsRevisionable)
+ActiveRecord::Base.extend(ActsAsRevisionable::ActsMethods)
