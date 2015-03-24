@@ -17,14 +17,14 @@ puts "Testing with ActiveRecord #{ActiveRecord::VERSION::STRING}"
 composite_primary_key_version = nil
 if ActiveRecord::VERSION::MAJOR >= 3
   if ActiveRecord::VERSION::MINOR == 0
-    composite_primary_key_version = "~>3.1.0"
+    composite_primary_key_version = "~> 3.1.0"
   elsif ActiveRecord::VERSION::MINOR == 1
-    composite_primary_key_version = "~>4"
+    composite_primary_key_version = "~> 4"
   else
-    composite_primary_key_version = "~>5"
+    composite_primary_key_version = ">= 5"
   end
 else
-  composite_primary_key_version = "~>2.3.5"
+  composite_primary_key_version = "~> 2.3.5"
 end
 
 gem 'composite_primary_keys', composite_primary_key_version

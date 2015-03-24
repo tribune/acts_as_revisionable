@@ -5,10 +5,6 @@ module ActsAsRevisionable
 
   autoload :RevisionRecord, File.expand_path('../acts_as_revisionable/revision_record', __FILE__)
 
-  def self.included(base)
-    base.extend(ActsMethods)
-  end
-
   module ActsMethods
     # Calling acts_as_revisionable will inject the revisionable behavior into the class. Specifying a :limit option
     # will limit the number of revisions that are kept per record. Specifying :minimum_age will ensure that revisions are

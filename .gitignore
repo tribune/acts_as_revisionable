@@ -1,4 +1,6 @@
-pkg
-tmp
+/pkg
+/tmp
+/.bundle
 rdoc
 *.rbc
+*.sw[mnop]
