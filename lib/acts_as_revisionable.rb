@@ -62,8 +62,11 @@ module ActsAsRevisionable
       has_many_options = {:as => :revisionable, :class_name => class_name}
       has_many_options[:dependent] = :destroy unless options[:dependent] == :keep
       has_many :revision_records, ->{ order('revision DESC') }, has_many_options
-      alias_method_chain :update, :revision if options[:on_update]
-      alias_method_chain :destroy, :revision if options[:on_destroy]
+
+      #alias_method_chain :update, :revision if options[:on_update]
+      around_update :update_with_revision  if options[:on_update]
+      #alias_method_chain :destroy, :revision if options[:on_destroy]
+      around_destroy :destroy_with_revision if options[:on_destroy]
     end
   end
 
@@ -161,10 +164,13 @@ module ActsAsRevisionable
               end
             else
               if reflection == :has_many
-                existing = associated_records.all
+                # TODO does load really do a query?
+                existing = associated_records.load
                 existing.each do |existing_association|
                   associated_records.delete(existing_association) unless associated_records.include?(existing_association)
                 end
+                # Warning: overwrite. must be done after loading the existing recs.
+                associated_records = associated_records.to_a
               end
 
               associated_records = [associated_records] unless associated_records.kind_of?(Array)
@@ -284,7 +290,8 @@ module ActsAsRevisionable
     # Destroy the record while recording the revision.
     def destroy_with_revision
       store_revision do
-        destroy_without_revision
+        #destroy_without_revision
+        yield
       end
     end
 
@@ -297,7 +304,8 @@ module ActsAsRevisionable
     # Update the record while recording the revision.
     def update_with_revision
       store_revision do
-        update_without_revision
+        #update_without_revision
+        yield
       end
     end
     

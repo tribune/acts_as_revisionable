@@ -19,6 +19,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency('activerecord', '>= 3.1.0', '< 4.3.0')
 
   spec.add_development_dependency('appraisal')
+  spec.add_development_dependency('byebug')
 
   # We need to avoid CPK < 3.1.7 because those use '>=' instead of '~>' for AR dep,
   # which may cause an obsolete CPK to be used with a newer AR.
