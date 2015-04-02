@@ -8,16 +8,7 @@
 #
 # To test multiple versions:
 #
-#     $ for ver in 3.1 3.2; do appraisal activerecord-$ver rspec spec; done
-
-[
-  [ '3.1', '~> 3.1.0' ],
-  [ '3.2', '~> 3.2.0' ],
-].each do |ver_name, ver_req|
-  appraise "activerecord-#{ver_name}" do
-    gem 'activerecord', ver_req
-  end
-end
+#     $ for ver in 4.0 4.1; do appraisal activerecord-$ver rspec spec; done
 
 [
   [ '4.0', '~> 4.0.0' ],  # TODO make compatible

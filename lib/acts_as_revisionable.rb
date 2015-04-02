@@ -59,9 +59,9 @@ module ActsAsRevisionable
       extend ClassMethods
       include InstanceMethods
       class_name = acts_as_revisionable_options[:class_name].to_s if acts_as_revisionable_options[:class_name]
-      has_many_options = {:as => :revisionable, :order => 'revision DESC', :class_name => class_name}
+      has_many_options = {:as => :revisionable, :class_name => class_name}
       has_many_options[:dependent] = :destroy unless options[:dependent] == :keep
-      has_many :revision_records, has_many_options
+      has_many :revision_records, ->{ order('revision DESC') }, has_many_options
       alias_method_chain :update, :revision if options[:on_update]
       alias_method_chain :destroy, :revision if options[:on_destroy]
     end

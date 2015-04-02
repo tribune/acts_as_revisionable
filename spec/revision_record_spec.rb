@@ -34,7 +34,7 @@ describe ActsAsRevisionable::RevisionRecord do
         t.column :name, :string
         t.column :value, :integer
       end unless table_exists?
-      set_primary_keys "first_id", "second_id"
+      self.primary_keys = "first_id", "second_id"
     end
 
     class TestRevisionableAssociationRecord < ActiveRecord::Base

@@ -37,7 +37,7 @@ describe ActsAsRevisionable do
         t.column :revisionable_test_model_id, :integer
         t.column :other_id, :integer
       end unless table_exists?
-      set_primary_keys "revisionable_test_model_id", "other_id"
+      self.primary_keys = "revisionable_test_model_id", "other_id"
       belongs_to :revisionable_test_model
     end
 
@@ -483,7 +483,7 @@ describe ActsAsRevisionable do
       model.many_other_things.collect{|t| t.name}.sort.should == ['many_other_thing_3', 'new_many_other_thing_1']
   
       # restore to memory
-      restored = model.restore_revision(1)
+      restored = model.restore_revision(1)  # TODO this hangs when using Appraisal on AR 4.0 (tested 4.0.13)
       restored.name.should == 'test'
       restored.id.should == model.id
       restored.many_things.collect{|t| t.name}.sort.should == ['many_thing_1', 'many_thing_2']
