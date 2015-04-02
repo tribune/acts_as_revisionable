@@ -1,13 +1,11 @@
 require 'rubygems'
 require 'logger'
 require 'stringio'
-
-require 'active_record'
+require 'bundler'
+Bundler.require(:default, :development)
 
 ActiveRecord::Base.logger = Logger.new(StringIO.new)
 puts "Testing with ActiveRecord #{ActiveRecord::VERSION::STRING}"
-
-require 'composite_primary_keys'
 
 require File.expand_path('../../lib/acts_as_revisionable', __FILE__)
 require 'sqlite3'

@@ -16,13 +16,9 @@ Gem::Specification.new do |spec|
   spec.test_files    = spec.files.grep(%r{^(test|spec|features)/})
   spec.require_paths = ["lib"]
 
-  # Should be set only when testing. You may need to delete Gemfile.lock.
-  activerec_ver_spec = ENV['ACTS_AS_REVISIONABLE_AR_VER']
-  if activerec_ver_spec
-    spec.add_dependency('activerecord', activerec_ver_spec)
-  else
-    spec.add_dependency('activerecord', '>= 3.0.20', '< 4.0')
-  end
+  spec.add_dependency('activerecord', '>= 3.1.0', '< 4.3.0')
+
+  spec.add_development_dependency('appraisal')
 
   # We need to avoid CPK < 3.1.7 because those use '>=' instead of '~>' for AR dep,
   # which may cause an obsolete CPK to be used with a newer AR.
