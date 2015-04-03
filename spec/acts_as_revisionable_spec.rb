@@ -484,7 +484,6 @@ describe ActsAsRevisionable do
       model.many_things.detect{|t| t.name == 'new_many_thing_1'}.sub_things.collect{|t| t.name}.sort.should == ['new_sub_thing_1', 'sub_thing_3']
       model.many_other_things.collect{|t| t.name}.sort.should == ['many_other_thing_3', 'new_many_other_thing_1']
   
-      skip 'TODO: this restore_revision call hangs on AR 4.0 (tested 4.0.13)'
       # restore to memory
       restored = model.restore_revision(1)
       restored.name.should == 'test'
@@ -513,6 +512,8 @@ describe ActsAsRevisionable do
       restored.many_things.detect{|t| t.name == 'many_thing_1'}.sub_things.collect{|t| t.name}.sort.should == ['sub_thing_1', 'sub_thing_2']
       restored.many_things.detect{|t| t.name == 'many_thing_2'}.sub_things.collect{|t| t.name}.sort.should == []
       restored.many_other_things.collect{|t| t.name}.sort.should == ['many_other_thing_3', 'new_many_other_thing_1']
+
+      skip "Why doesn't this test fail if I comment out the recursive save_restorable_associations call?"
     end
   
     it "should restore a record with has_one associations" do
