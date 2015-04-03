@@ -152,30 +152,37 @@ module ActsAsRevisionable
     def save_restorable_associations(record, associations)
       record.class.transaction do
         if associations.kind_of?(Hash)
-          associations.each_pair do |association, sub_associations|
-            associated_records = record.send(association)
-            reflection = record.class.reflections[association].macro
+          associations.each_pair do |assoc_name, sub_associations|
+            assoc_container = record.association(assoc_name)
+            assoc_macro = record.class.reflections[assoc_name].macro
 
-            if reflection == :has_and_belongs_to_many
-              associated_records = associated_records.collect{|r| r}
-              record.send(association, true).clear
-              associated_records.each do |assoc_record|
-                record.send(association) << assoc_record
+            # TODO: verify that we can make this assumption about #target
+            # The following logic uses #target to retrieve the in-memory child records,
+            # which were put in place when the revision was restored.
+            if assoc_macro == :has_and_belongs_to_many
+              memory_records = assoc_container.target
+              record.send(assoc_name, true).clear
+              memory_records.each do |assoc_record|
+                record.send(assoc_name) << assoc_record
               end
             else
-              if reflection == :has_many
-                # TODO does load really do a query?
-                existing = associated_records.load
-                existing.each do |existing_association|
-                  associated_records.delete(existing_association) unless associated_records.include?(existing_association)
+              case assoc_macro
+              when :has_many
+                memory_records = assoc_container.target
+                # force load from db w/o affecting cache (.all is deprecated)
+                existing = record.send(assoc_name).where('1=1').to_a
+                existing.each do |existing_rec|
+                  assoc_container.delete(existing_rec) unless memory_records.include?(existing_rec)
                 end
-                # Warning: overwrite. must be done after loading the existing recs.
-                associated_records = associated_records.to_a
+              when :has_one
+                memory_records = [ assoc_container.target ]
+              else
+                raise "Invalid association macro: #{assoc_macro}"
               end
 
-              associated_records = [associated_records] unless associated_records.kind_of?(Array)
-              associated_records.each do |associated_record|
-                save_restorable_associations(associated_record, sub_associations) if associated_record
+              # recurse, but not for HABTM
+              memory_records.each do |mem_record|
+                save_restorable_associations(mem_record, sub_associations) if mem_record
               end
             end
           end

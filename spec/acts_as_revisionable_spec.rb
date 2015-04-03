@@ -652,6 +652,7 @@ describe ActsAsRevisionable do
     end
 
     it "should handle composite primary keys" do
+      # PART 1: save model w/ 2 children - no revisioning
       thing_1 = RevisionableTestCompositeKeyThing.new(:name => 'thing_1')
       thing_1.other_id = 1
       thing_2 = RevisionableTestCompositeKeyThing.new(:name => 'thing_2')
@@ -667,11 +668,13 @@ describe ActsAsRevisionable do
       RevisionableTestCompositeKeyThing.count.should == 2
       ActsAsRevisionable::RevisionRecord.count.should == 0
 
+      # PART 2: modify children - with revisioning
       model.store_revision do
         thing_1 = model.composite_key_things.detect{|t| t.name == 'thing_1'}
         thing_1.name = 'new_thing_1'
         thing_2 = model.composite_key_things.detect{|t| t.name == 'thing_2'}
-        model.composite_key_things.delete(thing_2)
+        # CPK 6.x has a bug where you can only delete using ID(s) but not records
+        model.composite_key_things.delete(thing_2.id)
         model.composite_key_things << thing_3
         model.save!
         thing_1.save!
@@ -682,7 +685,7 @@ describe ActsAsRevisionable do
       RevisionableTestCompositeKeyThing.count.should == 2
       model.composite_key_things.collect{|t| t.name}.sort.should == ['new_thing_1', 'thing_3']
 
-      # restore to memory
+      # PART 3: restore only to memory
       restored = model.restore_revision(1)
       restored.composite_key_things.collect{|t| t.name}.sort.should == ['thing_1', 'thing_2']
       restored.valid?.should == true
@@ -692,6 +695,7 @@ describe ActsAsRevisionable do
       model.composite_key_things(true).collect{|t| t.name}.sort.should == ['new_thing_1', 'thing_3']
       RevisionableTestCompositeKeyThing.count.should == 2
 
+      # PART 4: restore to database
       model.restore_revision!(1)
       RevisionableTestModel.count.should == 1
       RevisionableTestCompositeKeyThing.count.should == 3
