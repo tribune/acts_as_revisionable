@@ -188,7 +188,7 @@ describe ActsAsRevisionable::RevisionRecord do
     original.other_revisionable_records << other_3
     original.save!
     revision = ActsAsRevisionable::RevisionRecord.new(original)
-    revision.revision_attributes['other_revisionable_records'].sort.should == [other_1.id, other_2.id, other_3.id]
+    revision.revision_attributes['other_revisionable_records'].should =~ [other_1.id, other_2.id, other_3.id]
   end
 
   it "should serialize revisionable associations of revisionable associations" do
@@ -318,7 +318,7 @@ describe ActsAsRevisionable::RevisionRecord do
     revision = ActsAsRevisionable::RevisionRecord.new(TestRevisionableRecord.new)
     record = TestRevisionableRecord.new
     revision.send(:restore_association, record, :other_revisionable_records, [other_1.id, other_2.id, other_3.id])
-    record.other_revisionable_records.collect{|r| r.id}.sort.should == [other_1.id, other_2.id, other_3.id]
+    record.other_revisionable_records.map(&:id).should =~ [other_1.id, other_2.id, other_3.id]
   end
 
   it "should be able to restore associations of associations" do
@@ -343,7 +343,7 @@ describe ActsAsRevisionable::RevisionRecord do
     revision.data = Zlib::Deflate.deflate(Marshal.dump(attributes))
     TestRevisionableRecord.should_receive(:new).and_return(restored)
 
-    associations = mock(:associations)
+    associations = double(:associations)
     restored.should_receive(:associations).and_return(associations)
     associated_record = TestRevisionableAssociationRecord.new
     associations.should_receive(:build).and_return(associated_record)
@@ -368,8 +368,8 @@ describe ActsAsRevisionable::RevisionRecord do
     revision = ActsAsRevisionable::RevisionRecord.new(TestRevisionableRecord.new(:name => 'name'))
     revision.revision = 20
     time = 2.weeks.ago
-    minimum_age = stub(:integer, :ago => time, :to_i => 1)
-    Time.stub!(:now).and_return(minimum_age)
+    minimum_age = double(:integer, :ago => time, :to_i => 1)
+    Time.stub(:now).and_return(minimum_age)
     ActsAsRevisionable::RevisionRecord.should_receive(:find).with(:first, :conditions => ['revisionable_type = ? AND revisionable_id = ? AND created_at <= ?', 'TestRevisionableRecord', 1, time], :offset => nil, :order => 'revision DESC').and_return(revision)
     ActsAsRevisionable::RevisionRecord.should_receive(:delete_all).with(['revisionable_type = ? AND revisionable_id = ? AND revision <= ?', 'TestRevisionableRecord', 1, 20])
     ActsAsRevisionable::RevisionRecord.truncate_revisions(TestRevisionableRecord, 1, :minimum_age => minimum_age)
@@ -461,6 +461,6 @@ describe ActsAsRevisionable::RevisionRecord do
     ActsAsRevisionable::RevisionRecord.count.should == 5
     ActsAsRevisionable::RevisionRecord.empty_trash(TestRevisionableRecord, 30)
     ActsAsRevisionable::RevisionRecord.count.should == 3
-    ActsAsRevisionable::RevisionRecord.all.collect{|r| r.id}.sort.should == [revision_2.id, revision_3.id, revision_4.id]
+    ActsAsRevisionable::RevisionRecord.all.map(&:id).should =~ [revision_2.id, revision_3.id, revision_4.id]
   end
 end
