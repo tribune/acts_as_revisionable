@@ -235,11 +235,7 @@ module ActsAsRevisionable
 
     # Restore a record and all its associations.
     def restore_record(record, attributes)
-      primary_key = record.class.primary_key
-      primary_key = [primary_key].compact unless primary_key.is_a?(Array)
-      primary_key.each do |key|
-        record.send("#{key.to_s}=", attributes[key.to_s])
-      end
+      assign_primary_key(record, attributes)
 
       attrs, association_attrs = attributes_and_associations(record.class, attributes)
       attrs.each_pair do |key, value|
@@ -254,15 +250,55 @@ module ActsAsRevisionable
         restore_association(record, key, values) if values
       end
       
+
       # Check if the record already exists in the database and restore its state.
       # This must be done last because otherwise associations on an existing record
       # can be deleted when a revision is restored to memory.
-      exists = record.class.find(record.send(record.class.primary_key)) rescue nil
-      if exists
-        record.instance_variable_set(:@new_record, nil) if record.instance_variable_defined?(:@new_record)
-        # ActiveRecord 3.0.2 and 3.0.3 used @persisted instead of @new_record
-        record.instance_variable_set(:@persisted, true) if record.instance_variable_defined?(:@persisted)
+      if record_exists?(record)
+        set_persisted(record)
       end
+    end
+
+    # Modifies record
+    def assign_primary_key(record, attributes)
+      pk_def = record.class.primary_key
+      return false if pk_def == nil
+
+      # Also handles composite key
+      pk_cols = pk_def.is_a?(Array) ? pk_def : [pk_def]
+      pk_cols.each do |col|
+        assign_method = "#{col}="
+        record.send(assign_method, attributes[col.to_s])
+      end
+      nil
+    end
+
+    def record_exists?(mem_record)
+      model_klass = mem_record.class
+      pk_def = model_klass.primary_key
+      return false if pk_def == nil
+
+      # Also handles composite key
+      pk_cols = pk_def.is_a?(Array) ? pk_def : [pk_def]
+
+      pk_val_map = pk_cols.each_with_object(Hash.new) {|col, h|
+        h[col] = mem_record.send(col)
+      }
+      # Don't query if PK contains nils
+      if pk_val_map.values.any?(&:nil?)
+        false
+      else
+        model_klass.where(pk_val_map).exists?
+      end
+    # This rescue was copied from the previous rev; not sure what errors might happen
+    #rescue
+    #  nil
+    end
+
+    def set_persisted(record)
+      # HACK: relies on AR internals. Keep this isolated in its own method.
+      # TODO: Can we try fetching the record before setting its attributes? That way the persisted state will already be correct.
+      record.instance_variable_set(:@new_record, nil) if record.instance_variable_defined?(:@new_record)
     end
   end
 end

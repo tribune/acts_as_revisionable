@@ -518,7 +518,7 @@ describe ActsAsRevisionable do
       RevisionableTestManyThing.count.should == 2
       RevisionableTestSubThing.count.should == 3
       # orphaned
-      expect( RevisionableTestSubThing.exists?(name: 'sub_thing_3', revisionable_test_many_thing_id: nil) ).to be true
+      expect( RevisionableTestSubThing.where(name: 'sub_thing_3', revisionable_test_many_thing_id: nil).exists? ).to be true
 
       RevisionableTestManyOtherThing.count.should == 2
       ActsAsRevisionable::RevisionRecord.count.should == 2
@@ -696,7 +696,7 @@ describe ActsAsRevisionable do
         thing_1.name = 'new_thing_1'
         thing_2 = model.composite_key_things.detect{|t| t.name == 'thing_2'}
         # CPK 6.x has a bug where you can only delete using ID(s) but not records
-        model.composite_key_things.delete(thing_2.id)
+        model.composite_key_things.delete(thing_2.id)  # destroys thing_2
         model.composite_key_things << thing_3
         model.save!
         thing_1.save!
@@ -721,7 +721,7 @@ describe ActsAsRevisionable do
       # PART 4: restore to database
       model.restore_revision!(1)
       RevisionableTestModel.count.should == 1
-      RevisionableTestCompositeKeyThing.count.should == 3
+      RevisionableTestCompositeKeyThing.count.should == 2
       RevisionableTestModel.find(model.id).tap do |db_restored|
         db_restored.name.should == 'test'
         db_restored.composite_key_things.map(&:name).should =~ ['thing_1', 'thing_2']
@@ -802,6 +802,31 @@ describe ActsAsRevisionable do
       Time.stub(:now => now + 61)
       ActsAsRevisionable::RevisionableNamespaceModel.empty_trash(60)
       ActsAsRevisionable::RevisionRecord.count.should == 1
+    end
+  end
+
+  context "squash_pk_changes" do
+    it "squash PK changes when all PK values set" do
+      cpk_rec = RevisionableTestCompositeKeyThing.new
+      cpk_rec.revisionable_test_model_id = 123
+      cpk_rec.other_id = 456
+      cpk_rec.name = 'foobar'
+      RevisionableTestModel.send(:squash_pk_changes, cpk_rec)
+      expect(cpk_rec.changes).to eq ( {'name' => [nil, 'foobar']} )
+      expect(cpk_rec.revisionable_test_model_id).to eq 123
+      expect(cpk_rec.other_id).to eq 456
+    end
+
+    it "doesn't squash if PK is partially null (safety-check)" do
+      cpk_rec = RevisionableTestCompositeKeyThing.new
+      cpk_rec.revisionable_test_model_id = 123
+      cpk_rec.name = 'foobar'
+      RevisionableTestModel.send(:squash_pk_changes, cpk_rec)
+      expect(cpk_rec.changes).to eq (
+        {'revisionable_test_model_id' => [nil, 123], 'name' => [nil, 'foobar']}
+      )
+      expect(cpk_rec.revisionable_test_model_id).to eq 123
+      expect(cpk_rec.other_id).to be nil
     end
   end
 end

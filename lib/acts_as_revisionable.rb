@@ -156,7 +156,6 @@ module ActsAsRevisionable
             assoc_container = record.association(assoc_name)
             assoc_macro = record.class.reflections[assoc_name].macro
 
-            # TODO: verify that we can make this assumption about #target
             # The following logic uses #target to retrieve the in-memory child records,
             # which were put in place when the revision was restored.
             if assoc_macro == :has_and_belongs_to_many
@@ -187,7 +186,31 @@ module ActsAsRevisionable
             end
           end
         end
-        record.save! unless record.new_record?
+        unless record.new_record?
+          squash_pk_changes(record)
+          record.save!
+        end
+      end
+    end
+
+    # This is only meant to be called on previously persisted records.
+    def squash_pk_changes(record)
+      pk_def = record.class.primary_key
+      if pk_def.is_a?(Array)  # composite
+        # Since we didn't actually fetch the record from the DB, CPK "mishandles" our update;
+        # it builds a 'where' clause with null values, so it fails to locate the persisted record.
+        # Non-CPK records don't have this "problem".
+        # Workaround: fool dirty-checking into thinking the PK cols haven't changed.
+
+        col_val_map = Hash[ pk_def.zip(record.id) ]
+        # Caution: the workaround is all or nothing. It could be dangerous to partially set the PK.
+        if col_val_map.values.all?
+          col_val_map.each do |col, val|
+            # HACK - sort of - this is a public API.
+            record.changed_attributes[col] = val
+            record.public_send("reset_#{col}!")
+          end
+        end
       end
     end
   end
