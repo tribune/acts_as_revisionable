@@ -247,7 +247,7 @@ module ActsAsRevisionable
         begin
           revision_record_class.transaction do
             begin
-              read_only = self.class.first(:conditions => {self.class.primary_key => self.id}, :readonly => true)
+              read_only = self.class.where(self.class.primary_key => self.id).readonly(true).first
               if read_only
                 revision = read_only.create_revision!
                 truncate_revisions!

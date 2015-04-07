@@ -420,8 +420,15 @@ describe ActsAsRevisionable::RevisionRecord do
   
   it "should find the last revision" do
     revision = ActsAsRevisionable::RevisionRecord.new(TestRevisionableRecord.new(:name => 'name'))
-    ActsAsRevisionable::RevisionRecord.should_receive(:find).with(:first, :conditions => {:revisionable_type => 'TestRevisionableRecord', :revisionable_id => 1}, :order => "revision DESC").and_return(revision)
-    ActsAsRevisionable::RevisionRecord.last_revision(TestRevisionableRecord, 1).should == revision
+    ChainedMock.with_fulfillment_check(
+      ActsAsRevisionable::RevisionRecord,
+      [ [:where, revisionable_type: 'TestRevisionableRecord', revisionable_id: 1],
+        [:order, "revision DESC"],
+        :first ],
+      revision
+    ) do
+      ActsAsRevisionable::RevisionRecord.last_revision(TestRevisionableRecord, 1).should == revision
+    end
   end
 
   it "should handle module namespaces" do

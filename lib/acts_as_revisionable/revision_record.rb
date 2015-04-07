@@ -12,12 +12,14 @@ module ActsAsRevisionable
     class << self
       # Find a specific revision record.
       def find_revision(klass, id, revision)
-        where(revisionable_type: klass.base_class.to_s, revisionable_id: id, revision: revision).first
+        where(revisionable_type: klass.base_class.to_s, revisionable_id: id,
+              revision: revision).first
       end
       
       # Find the last revision record for a class.
       def last_revision(klass, id, revision = nil)
-        find(:first, :conditions => {:revisionable_type => klass.base_class.to_s, :revisionable_id => id}, :order => "revision DESC")
+        where(revisionable_type: klass.base_class.to_s, revisionable_id: id).
+          order("revision DESC").first
       end
 
       # Truncate the revisions for a record. Available options are :limit and :max_age.
@@ -30,7 +32,8 @@ module ActsAsRevisionable
           conditions << options[:minimum_age].ago
         end
 
-        start_deleting_revision = where(conditions).order('revision DESC').offset(options[:limit]).first
+        start_deleting_revision = where(conditions).order('revision DESC').
+                                    offset(options[:limit]).first
         if start_deleting_revision
           delete_all(['revisionable_type = ? AND revisionable_id = ? AND revision <= ?', revisionable_type.base_class.to_s, revisionable_id, start_deleting_revision.revision])
         end
@@ -147,7 +150,9 @@ module ActsAsRevisionable
     end
 
     def set_revision_number
-      last_revision = self.class.where(revisionable_type: self.revisionable_type, revisionable_id: self.revisionable_id).maximum(:revision) || 0
+      last_revision =
+        self.class.where(revisionable_type: self.revisionable_type,
+                         revisionable_id: self.revisionable_id).maximum(:revision) || 0
       self.revision = last_revision + 1
     end
 
