@@ -360,9 +360,17 @@ describe ActsAsRevisionable::RevisionRecord do
   it "should be able to truncate the revisions for a record" do
     revision = ActsAsRevisionable::RevisionRecord.new(TestRevisionableRecord.new(:name => 'name'))
     revision.revision = 20
-    ActsAsRevisionable::RevisionRecord.should_receive(:find).with(:first, :conditions => ['revisionable_type = ? AND revisionable_id = ?', 'TestRevisionableRecord', 1], :offset => 15, :order => 'revision DESC').and_return(revision)
-    ActsAsRevisionable::RevisionRecord.should_receive(:delete_all).with(['revisionable_type = ? AND revisionable_id = ? AND revision <= ?', 'TestRevisionableRecord', 1, 20])
-    ActsAsRevisionable::RevisionRecord.truncate_revisions(TestRevisionableRecord, 1, :limit => 15)
+    ChainedMock.with_fulfillment_check(
+      ActsAsRevisionable::RevisionRecord,
+      [ [:where, ['revisionable_type = ? AND revisionable_id = ?', 'TestRevisionableRecord', 1]],
+        [:order, 'revision DESC'],
+        [:offset, 15],
+        :first ],
+      revision
+    ) do
+      ActsAsRevisionable::RevisionRecord.should_receive(:delete_all).with(['revisionable_type = ? AND revisionable_id = ? AND revision <= ?', 'TestRevisionableRecord', 1, 20])
+      ActsAsRevisionable::RevisionRecord.truncate_revisions(TestRevisionableRecord, 1, :limit => 15)
+    end
   end
 
   it "should be able to truncate the revisions for a record by age" do
@@ -371,15 +379,31 @@ describe ActsAsRevisionable::RevisionRecord do
     time = 2.weeks.ago
     minimum_age = double(:integer, :ago => time, :to_i => 1)
     Time.stub(:now).and_return(minimum_age)
-    ActsAsRevisionable::RevisionRecord.should_receive(:find).with(:first, :conditions => ['revisionable_type = ? AND revisionable_id = ? AND created_at <= ?', 'TestRevisionableRecord', 1, time], :offset => nil, :order => 'revision DESC').and_return(revision)
-    ActsAsRevisionable::RevisionRecord.should_receive(:delete_all).with(['revisionable_type = ? AND revisionable_id = ? AND revision <= ?', 'TestRevisionableRecord', 1, 20])
-    ActsAsRevisionable::RevisionRecord.truncate_revisions(TestRevisionableRecord, 1, :minimum_age => minimum_age)
+    ChainedMock.with_fulfillment_check(
+      ActsAsRevisionable::RevisionRecord,
+      [ [:where, ['revisionable_type = ? AND revisionable_id = ? AND created_at <= ?', 'TestRevisionableRecord', 1, time]],
+        [:order, 'revision DESC'],
+        [:offset, nil],
+        :first ],
+      revision
+    ) do
+      ActsAsRevisionable::RevisionRecord.should_receive(:delete_all).with(['revisionable_type = ? AND revisionable_id = ? AND revision <= ?', 'TestRevisionableRecord', 1, 20])
+      ActsAsRevisionable::RevisionRecord.truncate_revisions(TestRevisionableRecord, 1, :minimum_age => minimum_age)
+    end
   end
 
   it "should not truncate the revisions for a record if it doesn't have enough" do
-    ActsAsRevisionable::RevisionRecord.should_receive(:find).with(:first, :conditions => ['revisionable_type = ? AND revisionable_id = ?', 'TestRevisionableRecord', 1], :offset => 15, :order => 'revision DESC').and_return(nil)
-    ActsAsRevisionable::RevisionRecord.should_not_receive(:delete_all)
-    ActsAsRevisionable::RevisionRecord.truncate_revisions(TestRevisionableRecord, 1, :limit => 15)
+    ChainedMock.with_fulfillment_check(
+      ActsAsRevisionable::RevisionRecord,
+      [ [:where, ['revisionable_type = ? AND revisionable_id = ?', 'TestRevisionableRecord', 1]],
+        [:order, 'revision DESC'],
+        [:offset, 15],
+        :first ],
+      nil
+    ) do
+      ActsAsRevisionable::RevisionRecord.should_not_receive(:delete_all)
+      ActsAsRevisionable::RevisionRecord.truncate_revisions(TestRevisionableRecord, 1, :limit => 15)
+    end
   end
 
   it "should not truncate the revisions for a record if no limit or minimum_age is set" do
@@ -390,7 +414,7 @@ describe ActsAsRevisionable::RevisionRecord do
 
   it "should be able to find a record by revisioned type and id" do
     revision = ActsAsRevisionable::RevisionRecord.new(TestRevisionableRecord.new(:name => 'name'))
-    ActsAsRevisionable::RevisionRecord.should_receive(:find).with(:first, :conditions => {:revisionable_type => 'TestRevisionableRecord', :revisionable_id => 1, :revision => 2}).and_return(revision)
+    ActsAsRevisionable::RevisionRecord.should_receive(:where).with(:revisionable_type => 'TestRevisionableRecord', :revisionable_id => 1, :revision => 2).and_return([revision])
     ActsAsRevisionable::RevisionRecord.find_revision(TestRevisionableRecord, 1, 2).should == revision
   end
   
