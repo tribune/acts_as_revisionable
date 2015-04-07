@@ -29,7 +29,7 @@ module ActsAsRevisionable
         conditions = ['revisionable_type = ? AND revisionable_id = ?', revisionable_type.base_class.to_s, revisionable_id]
         if options[:minimum_age]
           conditions.first << ' AND created_at <= ?'
-          conditions << options[:minimum_age].ago
+          conditions << options[:minimum_age].seconds.ago
         end
 
         start_deleting_revision = where(conditions).order('revision DESC').
@@ -43,7 +43,7 @@ module ActsAsRevisionable
       # The +revisionable_type+ argument specifies the class to delete revision records for.
       def empty_trash(revisionable_type, max_age)
         sql = "revisionable_id IN (SELECT revisionable_id from #{table_name} WHERE created_at <= ? AND revisionable_type = ? AND trash = ?) AND revisionable_type = ?"
-        args = [max_age.ago, revisionable_type.name, true, revisionable_type.name]
+        args = [max_age.seconds.ago, revisionable_type.name, true, revisionable_type.name]
         delete_all([sql] + args)
       end
 

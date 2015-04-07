@@ -377,7 +377,9 @@ describe ActsAsRevisionable::RevisionRecord do
     revision = ActsAsRevisionable::RevisionRecord.new(TestRevisionableRecord.new(:name => 'name'))
     revision.revision = 20
     time = 2.weeks.ago
-    minimum_age = double(:integer, :ago => time, :to_i => 1)
+    minimum_age = double(:integer, to_i: 1).tap do |d|
+      d.stub_chain(:seconds, :ago).and_return time
+    end
     Time.stub(:now).and_return(minimum_age)
     ChainedMock.with_fulfillment_check(
       ActsAsRevisionable::RevisionRecord,
@@ -388,7 +390,8 @@ describe ActsAsRevisionable::RevisionRecord do
       revision
     ) do
       ActsAsRevisionable::RevisionRecord.should_receive(:delete_all).with(['revisionable_type = ? AND revisionable_id = ? AND revision <= ?', 'TestRevisionableRecord', 1, 20])
-      ActsAsRevisionable::RevisionRecord.truncate_revisions(TestRevisionableRecord, 1, :minimum_age => minimum_age)
+      ActsAsRevisionable::RevisionRecord.truncate_revisions(TestRevisionableRecord,
+                                                            1, :minimum_age => minimum_age)
     end
   end
 
