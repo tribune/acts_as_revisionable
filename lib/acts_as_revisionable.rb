@@ -154,7 +154,7 @@ module ActsAsRevisionable
         if associations.kind_of?(Hash)
           associations.each_pair do |assoc_name, sub_associations|
             assoc_container = record.association(assoc_name)
-            assoc_macro = record.class.reflections[assoc_name].macro
+            assoc_macro = record.class.reflect_on_association(assoc_name).macro
 
             # The following logic uses #target to retrieve the in-memory child records,
             # which were put in place when the revision was restored.
@@ -206,8 +206,15 @@ module ActsAsRevisionable
         # Caution: the workaround is all or nothing. It could be dangerous to partially set the PK.
         if col_val_map.values.all?
           col_val_map.each do |col, val|
-            # HACK - sort of - this is a public API.
-            record.changed_attributes[col] = val
+            if record.method(:changed_attributes).owner == ActiveModel::Dirty
+              # HACK - sort of - this is a public API.
+              record.changed_attributes[col] = val
+            else
+              # HACK for AR 4.2. TODO move to a separate method.
+              # ActiveRecord::AttributeMethods::Dirty now overrides the method, returning a frozen copy.
+              # We need to call the original.
+              ActiveModel::Dirty.public_instance_method(:changed_attributes).bind(record).call[col] = val
+            end
             record.public_send("reset_#{col}!")
           end
         end
