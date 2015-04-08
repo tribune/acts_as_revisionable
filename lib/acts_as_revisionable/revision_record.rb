@@ -192,7 +192,8 @@ module ActsAsRevisionable
 
       if hash
         hash.each_pair do |key, value|
-          if klass.reflect_on_association(key)
+          # AR 4.0 expects a symbol
+          if klass.reflect_on_association(key.to_sym)
             association_attrs[key] = value
           else
             attrs[key] = value
@@ -205,7 +206,8 @@ module ActsAsRevisionable
 
     def restore_association(record, association, association_attributes)
       association = association.to_sym
-      reflection = record.class.reflect_on_association(association)
+      # AR 4.0 expects a symbol
+      reflection = record.class.reflect_on_association(association.to_sym)
       associated_record = nil
 
       begin
