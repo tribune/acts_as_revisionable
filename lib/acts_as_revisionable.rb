@@ -2,8 +2,14 @@ require 'active_record'
 require 'active_support'
 
 module ActsAsRevisionable
-
   autoload :RevisionRecord, File.expand_path('../acts_as_revisionable/revision_record', __FILE__)
+
+  # Within this gem, we use this method when we need to access a reflection by key.
+  def self.reflect_on_assoc_compat(model_klass, assoc_name)
+    # We avoid calling reflections because the keys changed from symbol to string.
+    # AR 4.0 expects a symbol; 4.1 & 4.2 accept either string or symbol
+    model_klass.reflect_on_association(assoc_name.to_sym)
+  end
 
   module ActsMethods
     # Calling acts_as_revisionable will inject the revisionable behavior into the class. Specifying a :limit option
@@ -71,6 +77,13 @@ module ActsAsRevisionable
   end
 
   module ClassMethods
+    ATTR_REVERT_PREFIX =
+      if Gem::Requirement.new('>= 4.2.0').satisfied_by? Gem::Version.new(ActiveRecord::VERSION::STRING)
+        :restore_
+      else
+        :reset_
+      end
+
     # Get a revision for a specified id.
     def find_revision(id, revision_number)
       revision_record_class.find_revision(self, id, revision_number)
@@ -154,8 +167,7 @@ module ActsAsRevisionable
         if associations.kind_of?(Hash)
           associations.each_pair do |assoc_name, sub_associations|
             assoc_container = record.association(assoc_name)
-            # AR 4.0 expects a symbol
-            assoc_macro = record.class.reflect_on_association(assoc_name.to_sym).macro
+            assoc_macro = ActsAsRevisionable.reflect_on_assoc_compat(record.class, assoc_name).macro
 
             # The following logic uses #target to retrieve the in-memory child records,
             # which were put in place when the revision was restored.
@@ -221,8 +233,9 @@ module ActsAsRevisionable
       changed_attrs_method = ActiveModel::Dirty.public_instance_method(:changed_attributes).bind(record)
       changed_attrs_method.call[name] = value
 
-      record.public_send("reset_#{name}!")
+      record.public_send("#{ATTR_REVERT_PREFIX}#{name}!")
     end
+
   end
 
   module InstanceMethods
