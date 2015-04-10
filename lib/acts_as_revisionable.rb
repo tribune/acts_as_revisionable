@@ -69,9 +69,7 @@ module ActsAsRevisionable
       has_many_options[:dependent] = :destroy unless options[:dependent] == :keep
       has_many :revision_records, ->{ order('revision DESC') }, has_many_options
 
-      #alias_method_chain :update, :revision if options[:on_update]
       around_update :update_with_revision  if options[:on_update]
-      #alias_method_chain :destroy, :revision if options[:on_destroy]
       around_destroy :destroy_with_revision if options[:on_destroy]
     end
   end
@@ -343,7 +341,6 @@ module ActsAsRevisionable
     # Destroy the record while recording the revision.
     def destroy_with_revision
       store_revision do
-        #destroy_without_revision
         yield
       end
     end
@@ -357,7 +354,6 @@ module ActsAsRevisionable
     # Update the record while recording the revision.
     def update_with_revision
       store_revision do
-        #update_without_revision
         yield
       end
     end
