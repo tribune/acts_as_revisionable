@@ -5,7 +5,7 @@ require 'bundler'
 Bundler.require(:default, :development)
 
 ActiveRecord::Base.logger = Logger.new(StringIO.new)
-puts "Testing with ActiveRecord #{ActiveRecord::VERSION::STRING}"
+puts "Testing with ActiveRecord #{ActiveRecord::VERSION::STRING} on #{RUBY_DESCRIPTION}"
 
 require File.expand_path('../../lib/acts_as_revisionable', __FILE__)
 require 'sqlite3'
