@@ -1,3 +1,7 @@
+# Install gems for all appraisal definitions:
+#
+#     $ appraisal install
+#
 # To run tests on different versions:
 #
 #     $ appraisal activerecord-x.x rake spec
@@ -11,9 +15,9 @@
 #     $ for ver in 4.0 4.1; do appraisal activerecord-$ver rspec spec; done
 
 [
-  [ '4.0', '~> 4.0.0' ],  # TODO make compatible
-  [ '4.1', '~> 4.1.0' ],  # TODO make compatible
-  [ '4.2', '~> 4.2.0' ],  # TODO make compatible
+  [ '4.0', '~> 4.0.0' ],
+  [ '4.1', '~> 4.1.0' ],
+  [ '4.2', '~> 4.2.0' ],
 ].each do |ver_name, ver_req|
   appraise "activerecord-#{ver_name}" do
     gem 'activerecord', ver_req

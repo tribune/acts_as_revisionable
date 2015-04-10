@@ -4,7 +4,8 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require 'acts_as_revisionable/version'
 Gem::Specification.new do |spec|
   spec.name          = "acts_as_revisionable"
-  spec.version       = ActsAsRevisionable::VERSION
+  # some rubygems versions < 2.2 try to modify this, so give them a copy
+  spec.version       = ActsAsRevisionable::VERSION.dup
   spec.authors       = ["Brian Durand"]
   spec.email         = ["brian@embellishedvisions.com"]
   spec.summary       = %Q{ActiveRecord extension that provides revision support so that history can be tracked and changes can be reverted.}

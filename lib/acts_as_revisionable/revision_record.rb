@@ -67,8 +67,10 @@ module ActsAsRevisionable
       def update_version_1_table
         # Added in version 1.1.0
         connection.add_column(:revision_records, :trash, :boolean, :default => false)
-        connection.add_index :revision_records, :revisionable_id, :name => "#{table_name}_id"
-        connection.add_index :revision_records, [:revisionable_type, :created_at, :trash], :name => "#{table_name}_type_and_created_at"
+        connection.add_index(:revision_records, :revisionable_id, :name => "#{table_name}_id")
+        connection.add_index(:revision_records,
+                             [:revisionable_type, :created_at, :trash],
+                             :name => "#{table_name}_type_and_created_at")
 
         # Removed in 1.1.0
         connection.remove_index(:revision_records, :name => "revisionable")
