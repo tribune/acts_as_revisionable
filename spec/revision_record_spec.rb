@@ -416,6 +416,8 @@ describe ActsAsRevisionable::RevisionRecord do
     restored.class.should == TestInheritanceRecord
   end
 
+  it "[restore] falls back to passed klass if no STI type"
+
   it "should really save the revision records to the database and restore without any mocking" do
     ActsAsRevisionable::RevisionRecord.count.should == 0
 
