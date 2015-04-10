@@ -261,9 +261,8 @@ module ActsAsRevisionable
       # can be deleted when a revision is restored to memory.
       exists = record.class.find(record.send(record.class.primary_key)) rescue nil
       if exists
+        # HACK
         record.instance_variable_set(:@new_record, nil) if record.instance_variable_defined?(:@new_record)
-        # ActiveRecord 3.0.2 and 3.0.3 used @persisted instead of @new_record
-        record.instance_variable_set(:@persisted, true) if record.instance_variable_defined?(:@persisted)
       end
     end
   end

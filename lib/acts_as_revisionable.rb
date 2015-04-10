@@ -62,6 +62,7 @@ module ActsAsRevisionable
       has_many_options = {:as => :revisionable, :order => 'revision DESC', :class_name => class_name}
       has_many_options[:dependent] = :destroy unless options[:dependent] == :keep
       has_many :revision_records, has_many_options
+      # HACK: only works in 3.x; #save calls these.
       alias_method_chain :update, :revision if options[:on_update]
       alias_method_chain :destroy, :revision if options[:on_destroy]
     end

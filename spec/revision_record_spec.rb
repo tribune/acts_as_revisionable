@@ -24,7 +24,7 @@ describe ActsAsRevisionable::RevisionRecord do
         t.column :test_revisionable_record_id, :integer
       end unless table_exists?
       
-      self.primary_key = nil if ActiveRecord::VERSION::MAJOR >= 3 && ActiveRecord::VERSION::MINOR > 0
+      self.primary_key = nil
     end
     
     class TestRevisionableAssociationComposite < ActiveRecord::Base
