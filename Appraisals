@@ -4,10 +4,6 @@
 #
 # To run tests on different versions:
 #
-#     $ appraisal activerecord_x.x rake spec
-#
-# OR
-#
 #     $ appraisal activerecord_x.x rspec spec
 
 [
