@@ -2,6 +2,9 @@ require 'bundler/gem_tasks'
 require 'bundler/setup'
 require 'pathname'
 
+# Note: if you get this error: "Bundler could not find compatible versions for gem ..."
+# try deleting Gemfile.lock (usually happens when switching branches).
+
 task default: :appraise_all
 
 task :appraise_all do
