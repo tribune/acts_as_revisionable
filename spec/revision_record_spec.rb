@@ -447,7 +447,20 @@ describe ActsAsRevisionable::RevisionRecord do
     revision = ActsAsRevisionable::RevisionRecord.new(record)
     revision.data = Zlib::Deflate.deflate(Marshal.dump(record.attributes))
     restored = revision.restore
-    restored.class.should == TestInheritanceRecord
+    expect(restored.class).to eq TestInheritanceRecord
+    expect(restored.attributes.slice('name', 'value')).to eq attributes.slice('name', 'value')
+  end
+
+  it "[restore] falls back to passed klass if no STI type" do
+    attributes = {'name' => 'revision', 'value' => 5}
+    klass_to_restore_as = ActsAsRevisionable::TestModuleRecord
+
+    record = OtherRevisionableRecord.new(attributes)
+    revision = ActsAsRevisionable::RevisionRecord.new(record)
+    revision.data = Zlib::Deflate.deflate(Marshal.dump(record.attributes))
+    restored = revision.restore(klass_to_restore_as)
+    expect(restored.class).to eq klass_to_restore_as
+    expect(restored.attributes.except('id')).to eq attributes
   end
 
   it "should really save the revision records to the database and restore without any mocking" do
