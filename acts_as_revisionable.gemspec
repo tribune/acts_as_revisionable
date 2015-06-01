@@ -17,9 +17,13 @@ Gem::Specification.new do |spec|
   spec.test_files    = spec.files.grep(%r{^(test|spec|features)/})
   spec.require_paths = ["lib"]
 
-  spec.add_dependency('activerecord', '>= 3.1.0', '< 4')
+  spec.add_dependency('activerecord', '>= 4.0.0', '< 4.3.0')
 
   spec.add_development_dependency('appraisal')
+  #spec.add_development_dependency('byebug')
+  #spec.add_development_dependency('pry-rescue')
+  #spec.add_development_dependency('pry-byebug')
+  #spec.add_development_dependency('pry-stack_explorer')
 
   # We need to avoid CPK < 3.1.7 because those use '>=' instead of '~>' for AR dep,
   # which may cause an obsolete CPK to be used with a newer AR.

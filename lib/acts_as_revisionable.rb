@@ -2,8 +2,14 @@ require 'active_record'
 require 'active_support'
 
 module ActsAsRevisionable
-
   autoload :RevisionRecord, File.expand_path('../acts_as_revisionable/revision_record', __FILE__)
+
+  # Within this gem, we use this method when we need to access a reflection by key.
+  def self.reflect_on_assoc_compat(model_klass, assoc_name)
+    # We avoid calling reflections because the keys changed from symbol to string.
+    # AR 4.0 expects a symbol; 4.1 & 4.2 accept either string or symbol
+    model_klass.reflect_on_association(assoc_name.to_sym)
+  end
 
   module ActsMethods
     # Calling acts_as_revisionable will inject the revisionable behavior into the class. Specifying a :limit option
@@ -59,16 +65,23 @@ module ActsAsRevisionable
       extend ClassMethods
       include InstanceMethods
       class_name = acts_as_revisionable_options[:class_name].to_s if acts_as_revisionable_options[:class_name]
-      has_many_options = {:as => :revisionable, :order => 'revision DESC', :class_name => class_name}
+      has_many_options = {:as => :revisionable, :class_name => class_name}
       has_many_options[:dependent] = :destroy unless options[:dependent] == :keep
-      has_many :revision_records, has_many_options
-      # HACK: only works in 3.x; #save calls these.
-      alias_method_chain :update, :revision if options[:on_update]
-      alias_method_chain :destroy, :revision if options[:on_destroy]
+      has_many :revision_records, ->{ order('revision DESC') }, has_many_options
+
+      around_update :update_with_revision  if options[:on_update]
+      around_destroy :destroy_with_revision if options[:on_destroy]
     end
   end
 
   module ClassMethods
+    ATTR_REVERT_PREFIX =
+      if Gem::Requirement.new('>= 4.2.0').satisfied_by? Gem::Version.new(ActiveRecord::VERSION::STRING)
+        :restore_
+      else
+        :reset_
+      end
+
     # Get a revision for a specified id.
     def find_revision(id, revision_number)
       revision_record_class.find_revision(self, id, revision_number)
@@ -150,34 +163,77 @@ module ActsAsRevisionable
     def save_restorable_associations(record, associations)
       record.class.transaction do
         if associations.kind_of?(Hash)
-          associations.each_pair do |association, sub_associations|
-            associated_records = record.send(association)
-            reflection = record.class.reflections[association].macro
+          associations.each_pair do |assoc_name, sub_associations|
+            assoc_container = record.association(assoc_name)
+            assoc_macro = ActsAsRevisionable.reflect_on_assoc_compat(record.class, assoc_name).macro
 
-            if reflection == :has_and_belongs_to_many
-              associated_records = associated_records.collect{|r| r}
-              record.send(association, true).clear
-              associated_records.each do |assoc_record|
-                record.send(association) << assoc_record
+            # The following logic uses #target to retrieve the in-memory child records,
+            # which were put in place when the revision was restored.
+            if assoc_macro == :has_and_belongs_to_many
+              memory_records = assoc_container.target
+              record.send(assoc_name, true).clear
+              memory_records.each do |assoc_record|
+                record.send(assoc_name) << assoc_record
               end
             else
-              if reflection == :has_many
-                existing = associated_records.all
-                existing.each do |existing_association|
-                  associated_records.delete(existing_association) unless associated_records.include?(existing_association)
+              case assoc_macro
+              when :has_many
+                memory_records = assoc_container.target
+                # force load from db w/o affecting cache (.all is deprecated)
+                existing = record.send(assoc_name).where('1=1').to_a
+                existing.each do |existing_rec|
+                  assoc_container.delete(existing_rec) unless memory_records.include?(existing_rec)
                 end
+              when :has_one
+                memory_records = [ assoc_container.target ]
+              else
+                raise "Invalid association macro: #{assoc_macro}"
               end
 
-              associated_records = [associated_records] unless associated_records.kind_of?(Array)
-              associated_records.each do |associated_record|
-                save_restorable_associations(associated_record, sub_associations) if associated_record
+              # recurse, but not for HABTM
+              memory_records.each do |mem_record|
+                save_restorable_associations(mem_record, sub_associations) if mem_record
               end
             end
           end
         end
-        record.save! unless record.new_record?
+        unless record.new_record?
+          squash_pk_changes(record)
+          record.save!
+        end
       end
     end
+
+    # This is only meant to be called on previously persisted records.
+    def squash_pk_changes(record)
+      pk_def = record.class.primary_key
+      if pk_def.is_a?(Array)  # composite
+        # Since we didn't actually fetch the record from the DB, CPK "mishandles" our update;
+        # it builds a 'where' clause with null values, so it fails to locate the persisted record.
+        # Non-CPK records don't have this "problem".
+        # Workaround: fool dirty-checking into thinking the PK cols haven't changed.
+
+        col_val_map = Hash[ pk_def.zip(record.id) ]
+        # Caution: the workaround is all or nothing. It could be dangerous to partially set the PK.
+        if col_val_map.values.all?
+          col_val_map.each do |col, val|
+            dangerously_reset_attribute(record, col, val)
+          end
+        end
+      end
+    end
+
+    # This is a separate method only to isolate the hack. This is only meant to be called from squash_pk_changes
+    def dangerously_reset_attribute(record, name, value)
+      # HACK for AR 4.2 (also safe for 4.0, 4.1)
+      # ActiveRecord::AttributeMethods::Dirty now overrides the method, returning a frozen copy.
+      # We need to call the original.
+      changed_attrs_method = ActiveModel::Dirty.public_instance_method(:changed_attributes).bind(record)
+      changed_attrs_method.call[name] = value
+
+      record.public_send("#{ATTR_REVERT_PREFIX}#{name}!")
+    end
+
   end
 
   module InstanceMethods
@@ -212,7 +268,7 @@ module ActsAsRevisionable
         begin
           revision_record_class.transaction do
             begin
-              read_only = self.class.first(:conditions => {self.class.primary_key => self.id}, :readonly => true)
+              read_only = self.class.where(self.class.primary_key => self.id).readonly(true).first
               if read_only
                 revision = read_only.create_revision!
                 truncate_revisions!
@@ -285,7 +341,7 @@ module ActsAsRevisionable
     # Destroy the record while recording the revision.
     def destroy_with_revision
       store_revision do
-        destroy_without_revision
+        yield
       end
     end
 
@@ -298,7 +354,7 @@ module ActsAsRevisionable
     # Update the record while recording the revision.
     def update_with_revision
       store_revision do
-        update_without_revision
+        yield
       end
     end
     

@@ -37,7 +37,7 @@ describe ActsAsRevisionable do
         t.column :revisionable_test_model_id, :integer
         t.column :other_id, :integer
       end unless table_exists?
-      set_primary_keys "revisionable_test_model_id", "other_id"
+      self.primary_keys = "revisionable_test_model_id", "other_id"
       belongs_to :revisionable_test_model
     end
 
@@ -75,7 +75,9 @@ describe ActsAsRevisionable do
 
       attr_protected :secret
 
-      acts_as_revisionable :limit => 3, :dependent => :keep, :associations => [:one_thing, :non_revisionable_test_models, {:many_things => :sub_things}, :composite_key_things]
+      acts_as_revisionable :limit => 3, :dependent => :keep,
+                           :associations => [:one_thing, :non_revisionable_test_models,
+                                             {:many_things => :sub_things}, :composite_key_things]
 
       def set_secret(val)
         self.secret = val
@@ -103,7 +105,9 @@ describe ActsAsRevisionable do
         t.string :updated_by
       end unless table_exists?
 
-      acts_as_revisionable :on_update => true, :meta => {:label => lambda{|record| "name was '#{record.name}'"}, :updated_by => :updated_by, :version => 1}, :class_name => RevisionRecord2
+      acts_as_revisionable :on_update => true, :class_name => RevisionRecord2,
+                           :meta => {:label => lambda{|record| "name was '#{record.name}'"},
+                                     :updated_by => :updated_by, :version => 1}
     end
 
     module ActsAsRevisionable
@@ -318,7 +322,7 @@ describe ActsAsRevisionable do
         OtherRevisionableTestModel.acts_as_revisionable_options[:meta] = meta_value
       end
     end
-  
+
     it "should not create a revision entry if revisioning is disabled" do
       record = RevisionableTestModel.create!(:name => "test")
       ActsAsRevisionable::RevisionRecord.count.should == 0
@@ -344,29 +348,31 @@ describe ActsAsRevisionable do
         end
       end
       ActsAsRevisionable::RevisionRecord.count.should == 3
-      record.revision_records.collect{|r| r.revision}.should == [5, 4, 3]
+      record.revision_records.map(&:revision).should == [5, 4, 3]
     end
 
     it "should not save a revision if an update raises an exception" do
+      err_class = Class.new(StandardError)
+
       model = RevisionableTestModel.new(:name => 'test')
       model.store_revision do
         model.save!
       end
       model.reload
       ActsAsRevisionable::RevisionRecord.count.should == 0
-  
-      model.should_receive(:update).and_raise("update failed")
+
       model.name = 'new_name'
       begin
         model.store_revision do
           ActsAsRevisionable::RevisionRecord.count.should == 1
-          model.save
+          raise err_class, "update failed"
         end
-      rescue
+      rescue err_class => err
+        # rescue our specific error to avoid silencing rspec's failures
       end
       ActsAsRevisionable::RevisionRecord.count.should == 0
     end
-  
+
     it "should not save a revision if an update fails with errors" do
       model = RevisionableTestModel.new(:name => 'test')
       model.store_revision do
@@ -374,7 +380,7 @@ describe ActsAsRevisionable do
       end
       model.reload
       ActsAsRevisionable::RevisionRecord.count.should == 0
-  
+
       model.name = 'new_name'
       model.store_revision do
         ActsAsRevisionable::RevisionRecord.count.should == 1
@@ -383,7 +389,7 @@ describe ActsAsRevisionable do
       end
       ActsAsRevisionable::RevisionRecord.count.should == 0
     end
-  
+
     it "should mark the last revision for a deleted record as being trash" do
       model = ActsAsRevisionable::RevisionableNamespaceModel.new(:name => 'test')
       model.save!
@@ -396,47 +402,55 @@ describe ActsAsRevisionable do
       ActsAsRevisionable::RevisionRecord.last_revision(ActsAsRevisionable::RevisionableNamespaceModel, model.id).should be_trash
     end
   end
-  
+
   context "restoring revisions" do
+    # NOTE: to ensure accurate tests, isolate the restored model in a tap block.
+    # This, helps to prevent accidentally using the memory-restore to verify a db-restore.
+
     it "should restore a record without associations" do
-      model = RevisionableTestModel.new(:name => 'test')
-      model.set_secret(1234)
+      orig_name, orig_secret = 'test'.freeze    , 1234
+      new_name , new_secret  = 'new_name'.freeze, 5678
+
+      model = RevisionableTestModel.new(:name => orig_name)
+      model.set_secret(orig_secret)
       model.store_revision do
         model.save!
       end
       model.reload
       ActsAsRevisionable::RevisionRecord.count.should == 0
-  
-      model.name = 'new_name'
-      model.set_secret(5678)
+
+      model.name = new_name
+      model.set_secret(new_secret)
       model.store_revision do
         model.save!
       end
       model.reload
       ActsAsRevisionable::RevisionRecord.count.should == 1
-      model.name.should == 'new_name'
-      model.secret.should == 5678
-  
-      restored = model.restore_revision(1)
-      restored.name.should == 'test'
-      restored.secret.should == 1234
-      restored.id.should == model.id
-  
-      restored.store_revision do
-        restored.save!
+      model.name.should == new_name
+      model.secret.should == new_secret
+
+      model.restore_revision(1).tap do |mem_restored|
+        mem_restored.name.should == orig_name
+        mem_restored.secret.should == orig_secret
+        mem_restored.id.should == model.id
+
+        mem_restored.store_revision do
+          mem_restored.save!
+        end
       end
       RevisionableTestModel.count.should == 1
       ActsAsRevisionable::RevisionRecord.count.should == 2
-      restored_model = RevisionableTestModel.find(model.id)
-      restored_model.name.should == restored.name
-      restored_model.secret.should == restored.secret
+      RevisionableTestModel.find(model.id).tap do |db_restored|
+        db_restored.name.should == orig_name
+        db_restored.secret.should == orig_secret
+      end
     end
-  
+
     it "should restore a record with has_many associations" do
       many_thing_1 = RevisionableTestManyThing.new(:name => 'many_thing_1')
       many_thing_1.sub_things.build(:name => 'sub_thing_1')
       many_thing_1.sub_things.build(:name => 'sub_thing_2')
-  
+
       model = RevisionableTestModel.new(:name => 'test')
       model.many_things << many_thing_1
       model.many_things.build(:name => 'many_thing_2')
@@ -448,7 +462,7 @@ describe ActsAsRevisionable do
       RevisionableTestSubThing.count.should == 2
       RevisionableTestManyOtherThing.count.should == 2
       ActsAsRevisionable::RevisionRecord.count.should == 0
-  
+
       model.store_revision do
         model.name = 'new_name'
         many_thing_1 = model.many_things.detect{|t| t.name == 'many_thing_1'}
@@ -457,7 +471,7 @@ describe ActsAsRevisionable do
         sub_thing_1.name = 'new_sub_thing_1'
         sub_thing_2 = many_thing_1.sub_things.detect{|t| t.name == 'sub_thing_2'}
         many_thing_1.sub_things.build(:name => 'sub_thing_3')
-        many_thing_1.sub_things.delete(sub_thing_2)
+        many_thing_1.sub_things.delete(sub_thing_2)  # orphans sub_thing_2
         many_thing_2 = model.many_things.detect{|t| t.name == 'many_thing_2'}
         model.many_things.delete(many_thing_2)
         model.many_things.build(:name => 'many_thing_3')
@@ -471,47 +485,52 @@ describe ActsAsRevisionable do
         sub_thing_1.save!
         many_other_thing_1.save!
       end
-  
+
       model.reload
       ActsAsRevisionable::RevisionRecord.count.should == 1
       RevisionableTestManyThing.count.should == 2
       RevisionableTestSubThing.count.should == 3
       RevisionableTestManyOtherThing.count.should == 2
       model.name.should == 'new_name'
-      model.many_things.collect{|t| t.name}.sort.should == ['many_thing_3', 'new_many_thing_1']
-      model.many_things.detect{|t| t.name == 'new_many_thing_1'}.sub_things.collect{|t| t.name}.sort.should == ['new_sub_thing_1', 'sub_thing_3']
-      model.many_other_things.collect{|t| t.name}.sort.should == ['many_other_thing_3', 'new_many_other_thing_1']
-  
+      model.many_things.map(&:name).should =~ ['many_thing_3', 'new_many_thing_1']
+      model.many_things.detect{|t| t.name == 'new_many_thing_1'}.sub_things.map(&:name).should =~ ['new_sub_thing_1', 'sub_thing_3']
+      model.many_other_things.map(&:name).should =~ ['many_other_thing_3', 'new_many_other_thing_1']
+
       # restore to memory
-      restored = model.restore_revision(1)
-      restored.name.should == 'test'
-      restored.id.should == model.id
-      restored.many_things.collect{|t| t.name}.sort.should == ['many_thing_1', 'many_thing_2']
-      restored.many_things.detect{|t| t.name == 'many_thing_1'}.sub_things.collect{|t| t.name}.sort.should == ['sub_thing_1', 'sub_thing_2']
-      restored.many_other_things.collect{|t| t.name}.sort.should == ['many_other_thing_3', 'new_many_other_thing_1']
-      restored.valid?.should == true
-  
+      model.restore_revision(1).tap do |mem_restored|
+        mem_restored.name.should == 'test'
+        mem_restored.id.should == model.id
+        mem_restored.many_things.map(&:name).should =~ ['many_thing_1', 'many_thing_2']
+        mem_restored.many_things.detect{|t| t.name == 'many_thing_1'}.sub_things.map(&:name).should =~ ['sub_thing_1', 'sub_thing_2']
+        mem_restored.many_other_things.map(&:name).should =~ ['many_other_thing_3', 'new_many_other_thing_1']
+        mem_restored.valid?.should == true
+      end
+
       # make sure the restore to memory didn't affect the database
       model.reload
       model.name.should == 'new_name'
-      model.many_things(true).collect{|t| t.name}.sort.should == ['many_thing_3', 'new_many_thing_1']
-      model.many_things.detect{|t| t.name == 'new_many_thing_1'}.sub_things.collect{|t| t.name}.sort.should == ['new_sub_thing_1', 'sub_thing_3']
-      model.many_other_things.collect{|t| t.name}.sort.should == ['many_other_thing_3', 'new_many_other_thing_1']
-  
+      model.many_things(true).map(&:name).should =~ ['many_thing_3', 'new_many_thing_1']
+      model.many_things.detect{|t| t.name == 'new_many_thing_1'}.sub_things.map(&:name).should =~ ['new_sub_thing_1', 'sub_thing_3']
+      model.many_other_things.map(&:name).should =~ ['many_other_thing_3', 'new_many_other_thing_1']
+
       model.restore_revision!(1)
       RevisionableTestModel.count.should == 1
       RevisionableTestManyThing.count.should == 2
       RevisionableTestSubThing.count.should == 3
+      # orphaned
+      expect( RevisionableTestSubThing.where(name: 'sub_thing_3', revisionable_test_many_thing_id: nil).exists? ).to be true
+
       RevisionableTestManyOtherThing.count.should == 2
       ActsAsRevisionable::RevisionRecord.count.should == 2
-      restored_model = RevisionableTestModel.find(model.id)
-      restored_model.name.should == 'test'
-      restored.many_things.collect{|t| t.name}.sort.should == ['many_thing_1', 'many_thing_2']
-      restored.many_things.detect{|t| t.name == 'many_thing_1'}.sub_things.collect{|t| t.name}.sort.should == ['sub_thing_1', 'sub_thing_2']
-      restored.many_things.detect{|t| t.name == 'many_thing_2'}.sub_things.collect{|t| t.name}.sort.should == []
-      restored.many_other_things.collect{|t| t.name}.sort.should == ['many_other_thing_3', 'new_many_other_thing_1']
+      RevisionableTestModel.find(model.id).tap do |db_restored|
+        db_restored.name.should == 'test'
+        db_restored.many_things.map(&:name).should =~ ['many_thing_1', 'many_thing_2']
+        db_restored.many_things.detect{|t| t.name == 'many_thing_1'}.sub_things.map(&:name).should =~ ['sub_thing_1', 'sub_thing_2']
+        db_restored.many_things.detect{|t| t.name == 'many_thing_2'}.sub_things.map(&:name).should =~ []
+        db_restored.many_other_things.map(&:name).should =~ ['many_other_thing_3', 'new_many_other_thing_1']
+      end
     end
-  
+
     it "should restore a record with has_one associations" do
       model = RevisionableTestModel.new(:name => 'test')
       model.build_one_thing(:name => 'other')
@@ -535,10 +554,11 @@ describe ActsAsRevisionable do
       model.one_thing.name.should == 'new_other'
 
       # restore to memory
-      restored = model.restore_revision(1)
-      restored.name.should == 'test'
-      restored.one_thing.name.should == 'other'
-      restored.one_thing.id.should == model.one_thing.id
+      model.restore_revision(1).tap do |mem_restored|
+        mem_restored.name.should == 'test'
+        mem_restored.one_thing.name.should == 'other'
+        mem_restored.one_thing.id.should == model.one_thing.id
+      end
 
       # make sure restore to memory didn't affect the database
       model.reload
@@ -550,10 +570,11 @@ describe ActsAsRevisionable do
       RevisionableTestModel.count.should == 1
       RevisionableTestOneThing.count.should == 1
       ActsAsRevisionable::RevisionRecord.count.should == 2
-      restored_model = RevisionableTestModel.find(model.id)
-      restored_model.name.should == 'test'
-      restored_model.one_thing.name.should == 'other'
-      restored_model.one_thing.id.should == model.one_thing.id
+      RevisionableTestModel.find(model.id).tap do |db_restored|
+        db_restored.name.should == 'test'
+        db_restored.one_thing.name.should == 'other'
+        db_restored.one_thing.id.should == model.one_thing.id
+      end
     end
 
     it "should restore a record with has_and_belongs_to_many associations" do
@@ -581,26 +602,28 @@ describe ActsAsRevisionable do
       ActsAsRevisionable::RevisionRecord.count.should == 1
       NonRevisionableTestModel.count.should == 3
       model.name.should == 'new_name'
-      model.non_revisionable_test_models.collect{|r| r.name}.sort.should == ['111', '333']
+      model.non_revisionable_test_models.map(&:name).should =~ ['111', '333']
 
       # restore to memory
-      restored = model.restore_revision(1)
-      restored.name.should == 'test'
-      restored.non_revisionable_test_models.collect{|r| r.name}.sort.should == ['111', 'two']
+      model.restore_revision(1).tap do |mem_restored|
+        mem_restored.name.should == 'test'
+        mem_restored.non_revisionable_test_models.map(&:name).should =~ ['111', 'two']
+      end
 
       # make sure the restore to memory didn't affect the database
       model.reload
       model.name.should == 'new_name'
-      model.non_revisionable_test_models(true).collect{|r| r.name}.sort.should == ['111', '333']
+      model.non_revisionable_test_models(true).map(&:name).should =~ ['111', '333']
 
       model.restore_revision!(1)
       NonRevisionableTestModelsRevisionableTestModel.count.should == 2
       RevisionableTestModel.count.should == 1
       NonRevisionableTestModel.count.should == 3
       ActsAsRevisionable::RevisionRecord.count.should == 2
-      restored_model = RevisionableTestModel.find(model.id)
-      restored_model.name.should == 'test'
-      restored_model.non_revisionable_test_models.collect{|r| r.name}.sort.should == ['111', 'two']
+      RevisionableTestModel.find(model.id).tap do |db_restored|
+        db_restored.name.should == 'test'
+        db_restored.non_revisionable_test_models.map(&:name).should =~ ['111', 'two']
+      end
     end
 
     it "should handle namespaces and single table inheritance" do
@@ -619,10 +642,11 @@ describe ActsAsRevisionable do
       ActsAsRevisionable::RevisionRecord.count.should == 1
       model.name.should == 'new_name'
 
-      restored = model.restore_revision(1)
-      restored.class.should == ActsAsRevisionable::RevisionableNamespaceModel
-      restored.name.should == 'test'
-      restored.id.should == model.id
+      model.restore_revision(1).tap do |mem_restored|
+        mem_restored.class.should == ActsAsRevisionable::RevisionableNamespaceModel
+        mem_restored.name.should == 'test'
+        mem_restored.id.should == model.id
+      end
     end
 
     it "should handle single table inheritance" do
@@ -641,14 +665,16 @@ describe ActsAsRevisionable do
       ActsAsRevisionable::RevisionRecord.count.should == 1
       model.name.should == 'new_name'
 
-      restored = model.restore_revision(1)
-      restored.class.should == ActsAsRevisionable::RevisionableSubclassModel
-      restored.name.should == 'test'
-      restored.id.should == model.id
-      restored.type_name.should == 'RevisionableSubclassModel'
+      model.restore_revision(1).tap do |mem_restored|
+        mem_restored.class.should == ActsAsRevisionable::RevisionableSubclassModel
+        mem_restored.name.should == 'test'
+        mem_restored.id.should == model.id
+        mem_restored.type_name.should == 'RevisionableSubclassModel'
+      end
     end
 
     it "should handle composite primary keys" do
+      # PART 1: save model w/ 2 children - no revisioning
       thing_1 = RevisionableTestCompositeKeyThing.new(:name => 'thing_1')
       thing_1.other_id = 1
       thing_2 = RevisionableTestCompositeKeyThing.new(:name => 'thing_2')
@@ -664,11 +690,13 @@ describe ActsAsRevisionable do
       RevisionableTestCompositeKeyThing.count.should == 2
       ActsAsRevisionable::RevisionRecord.count.should == 0
 
+      # PART 2: modify children - with revisioning
       model.store_revision do
         thing_1 = model.composite_key_things.detect{|t| t.name == 'thing_1'}
         thing_1.name = 'new_thing_1'
         thing_2 = model.composite_key_things.detect{|t| t.name == 'thing_2'}
-        model.composite_key_things.delete(thing_2)
+        # CPK 6.x has a bug where you can only delete using ID(s) but not records
+        model.composite_key_things.delete(thing_2.id)  # destroys thing_2
         model.composite_key_things << thing_3
         model.save!
         thing_1.save!
@@ -677,24 +705,27 @@ describe ActsAsRevisionable do
       model.reload
       ActsAsRevisionable::RevisionRecord.count.should == 1
       RevisionableTestCompositeKeyThing.count.should == 2
-      model.composite_key_things.collect{|t| t.name}.sort.should == ['new_thing_1', 'thing_3']
+      model.composite_key_things.map(&:name).should =~ ['new_thing_1', 'thing_3']
 
-      # restore to memory
-      restored = model.restore_revision(1)
-      restored.composite_key_things.collect{|t| t.name}.sort.should == ['thing_1', 'thing_2']
-      restored.valid?.should == true
+      # PART 3: restore only to memory
+      model.restore_revision(1).tap do |mem_restored|
+        mem_restored.composite_key_things.map(&:name).should =~ ['thing_1', 'thing_2']
+        mem_restored.valid?.should == true
+      end
 
       # make sure the restore to memory didn't affect the database
       model.reload
-      model.composite_key_things(true).collect{|t| t.name}.sort.should == ['new_thing_1', 'thing_3']
+      model.composite_key_things(true).map(&:name).should =~ ['new_thing_1', 'thing_3']
       RevisionableTestCompositeKeyThing.count.should == 2
 
+      # PART 4: restore to database
       model.restore_revision!(1)
       RevisionableTestModel.count.should == 1
-      RevisionableTestCompositeKeyThing.count.should == 3
-      restored_model = RevisionableTestModel.find(model.id)
-      restored_model.name.should == 'test'
-      restored.composite_key_things.collect{|t| t.name}.sort.should == ['thing_1', 'thing_2']
+      RevisionableTestCompositeKeyThing.count.should == 2
+      RevisionableTestModel.find(model.id).tap do |db_restored|
+        db_restored.name.should == 'test'
+        db_restored.composite_key_things.map(&:name).should =~ ['thing_1', 'thing_2']
+      end
     end
 
     it "should restore a deleted record" do
@@ -771,6 +802,31 @@ describe ActsAsRevisionable do
       Time.stub(:now => now + 61)
       ActsAsRevisionable::RevisionableNamespaceModel.empty_trash(60)
       ActsAsRevisionable::RevisionRecord.count.should == 1
+    end
+  end
+
+  context "squash_pk_changes" do
+    it "squash PK changes when all PK values set" do
+      cpk_rec = RevisionableTestCompositeKeyThing.new
+      cpk_rec.revisionable_test_model_id = 123
+      cpk_rec.other_id = 456
+      cpk_rec.name = 'foobar'
+      RevisionableTestModel.send(:squash_pk_changes, cpk_rec)
+      expect(cpk_rec.changes).to eq ( {'name' => [nil, 'foobar']} )
+      expect(cpk_rec.revisionable_test_model_id).to eq 123
+      expect(cpk_rec.other_id).to eq 456
+    end
+
+    it "doesn't squash if PK is partially null (safety-check)" do
+      cpk_rec = RevisionableTestCompositeKeyThing.new
+      cpk_rec.revisionable_test_model_id = 123
+      cpk_rec.name = 'foobar'
+      RevisionableTestModel.send(:squash_pk_changes, cpk_rec)
+      expect(cpk_rec.changes).to eq (
+        {'revisionable_test_model_id' => [nil, 123], 'name' => [nil, 'foobar']}
+      )
+      expect(cpk_rec.revisionable_test_model_id).to eq 123
+      expect(cpk_rec.other_id).to be nil
     end
   end
 end

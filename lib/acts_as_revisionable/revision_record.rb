@@ -12,12 +12,14 @@ module ActsAsRevisionable
     class << self
       # Find a specific revision record.
       def find_revision(klass, id, revision)
-        find(:first, :conditions => {:revisionable_type => klass.base_class.to_s, :revisionable_id => id, :revision => revision})
+        where(revisionable_type: klass.base_class.to_s, revisionable_id: id,
+              revision: revision).first
       end
       
       # Find the last revision record for a class.
       def last_revision(klass, id, revision = nil)
-        find(:first, :conditions => {:revisionable_type => klass.base_class.to_s, :revisionable_id => id}, :order => "revision DESC")
+        where(revisionable_type: klass.base_class.to_s, revisionable_id: id).
+          order("revision DESC").first
       end
 
       # Truncate the revisions for a record. Available options are :limit and :max_age.
@@ -27,10 +29,11 @@ module ActsAsRevisionable
         conditions = ['revisionable_type = ? AND revisionable_id = ?', revisionable_type.base_class.to_s, revisionable_id]
         if options[:minimum_age]
           conditions.first << ' AND created_at <= ?'
-          conditions << options[:minimum_age].ago
+          conditions << options[:minimum_age].seconds.ago
         end
 
-        start_deleting_revision = find(:first, :conditions => conditions, :order => 'revision DESC', :offset => options[:limit])
+        start_deleting_revision = where(conditions).order('revision DESC').
+                                    offset(options[:limit]).first
         if start_deleting_revision
           delete_all(['revisionable_type = ? AND revisionable_id = ? AND revision <= ?', revisionable_type.base_class.to_s, revisionable_id, start_deleting_revision.revision])
         end
@@ -40,7 +43,7 @@ module ActsAsRevisionable
       # The +revisionable_type+ argument specifies the class to delete revision records for.
       def empty_trash(revisionable_type, max_age)
         sql = "revisionable_id IN (SELECT revisionable_id from #{table_name} WHERE created_at <= ? AND revisionable_type = ? AND trash = ?) AND revisionable_type = ?"
-        args = [max_age.ago, revisionable_type.name, true, revisionable_type.name]
+        args = [max_age.seconds.ago, revisionable_type.name, true, revisionable_type.name]
         delete_all([sql] + args)
       end
 
@@ -64,8 +67,10 @@ module ActsAsRevisionable
       def update_version_1_table
         # Added in version 1.1.0
         connection.add_column(:revision_records, :trash, :boolean, :default => false)
-        connection.add_index :revision_records, :revisionable_id, :name => "#{table_name}_id"
-        connection.add_index :revision_records, [:revisionable_type, :created_at, :trash], :name => "#{table_name}_type_and_created_at"
+        connection.add_index(:revision_records, :revisionable_id, :name => "#{table_name}_id")
+        connection.add_index(:revision_records,
+                             [:revisionable_type, :created_at, :trash],
+                             :name => "#{table_name}_type_and_created_at")
 
         # Removed in 1.1.0
         connection.remove_index(:revision_records, :name => "revisionable")
@@ -147,7 +152,9 @@ module ActsAsRevisionable
     end
 
     def set_revision_number
-      last_revision = self.class.maximum(:revision, :conditions => {:revisionable_type => self.revisionable_type, :revisionable_id => self.revisionable_id}) || 0
+      last_revision =
+        self.class.where(revisionable_type: self.revisionable_type,
+                         revisionable_id: self.revisionable_id).maximum(:revision) || 0
       self.revision = last_revision + 1
     end
 
@@ -187,7 +194,7 @@ module ActsAsRevisionable
 
       if hash
         hash.each_pair do |key, value|
-          if klass.reflections.include?(key.to_sym)
+          if ActsAsRevisionable.reflect_on_assoc_compat(klass, key)
             association_attrs[key] = value
           else
             attrs[key] = value
@@ -200,18 +207,16 @@ module ActsAsRevisionable
 
     def restore_association(record, association, association_attributes)
       association = association.to_sym
-      reflection = record.class.reflections[association]
+      reflection = ActsAsRevisionable.reflect_on_assoc_compat(record.class, association)
       associated_record = nil
 
       begin
         if reflection.macro == :has_many
           if association_attributes.kind_of?(Array)
-            # Pop all the associated records to remove all records. In Rails 3.2 setting the value of the list
-            # will immediately affect the database
-            records = record.send(association)
-            while records.pop do
-              # no-op
-            end
+            # Note: do NOT try calling record.send(association).pop until it's empty. It will be an infinite loop!
+            # Set in-memory cache & mark assoc as loaded.
+            record.association(association).target = []
+
             association_attributes.each do |attrs|
               restore_association(record, association, attrs)
             end
@@ -237,11 +242,7 @@ module ActsAsRevisionable
 
     # Restore a record and all its associations.
     def restore_record(record, attributes)
-      primary_key = record.class.primary_key
-      primary_key = [primary_key].compact unless primary_key.is_a?(Array)
-      primary_key.each do |key|
-        record.send("#{key.to_s}=", attributes[key.to_s])
-      end
+      assign_primary_key(record, attributes)
 
       attrs, association_attrs = attributes_and_associations(record.class, attributes)
       attrs.each_pair do |key, value|
@@ -256,14 +257,55 @@ module ActsAsRevisionable
         restore_association(record, key, values) if values
       end
       
+
       # Check if the record already exists in the database and restore its state.
       # This must be done last because otherwise associations on an existing record
       # can be deleted when a revision is restored to memory.
-      exists = record.class.find(record.send(record.class.primary_key)) rescue nil
-      if exists
-        # HACK
-        record.instance_variable_set(:@new_record, nil) if record.instance_variable_defined?(:@new_record)
+      if record_exists?(record)
+        set_persisted(record)
       end
+    end
+
+    # Modifies record
+    def assign_primary_key(record, attributes)
+      pk_def = record.class.primary_key
+      return false if pk_def == nil
+
+      # Also handles composite key
+      pk_cols = pk_def.is_a?(Array) ? pk_def : [pk_def]
+      pk_cols.each do |col|
+        assign_method = "#{col}="
+        record.send(assign_method, attributes[col.to_s])
+      end
+      nil
+    end
+
+    def record_exists?(mem_record)
+      model_klass = mem_record.class
+      pk_def = model_klass.primary_key
+      return false if pk_def == nil
+
+      # Also handles composite key
+      pk_cols = pk_def.is_a?(Array) ? pk_def : [pk_def]
+
+      pk_val_map = pk_cols.each_with_object(Hash.new) {|col, h|
+        h[col] = mem_record.send(col)
+      }
+      # Don't query if PK contains nils
+      if pk_val_map.values.any?(&:nil?)
+        false
+      else
+        model_klass.where(pk_val_map).exists?
+      end
+    # This rescue was copied from the previous rev; not sure what errors might happen
+    #rescue
+    #  nil
+    end
+
+    def set_persisted(record)
+      # HACK: relies on AR internals. Keep this isolated in its own method.
+      # TODO: Can we try fetching the record before setting its attributes? That way the persisted state will already be correct.
+      record.instance_variable_set(:@new_record, nil) if record.instance_variable_defined?(:@new_record)
     end
   end
 end
